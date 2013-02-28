@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 2.6 FATAL_ERROR)
+project(MY_GRAND_PROJECT)
+find_package(PCL 1.5 REQUIRED COMPONENTS common io sample_consensus segmentation features)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+add_executable(3dcircle_segmentation 3dcircle_segmentation.cpp)
+target_link_libraries(3dcircle_segmentation ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_FEATURES_LIBRARIES} ${PCL_SEGMENTATION_LIBRARIES})

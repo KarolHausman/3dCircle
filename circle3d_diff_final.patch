@@ -1,0 +1,1110 @@
+Index: sample_consensus/include/pcl/sample_consensus/sac_model_circle3d.h
+===================================================================
+--- sample_consensus/include/pcl/sample_consensus/sac_model_circle3d.h	(revision 0)
++++ sample_consensus/include/pcl/sample_consensus/sac_model_circle3d.h	(revision 0)
+@@ -0,0 +1,241 @@
++// Raoul Hoffmann, Karol Hausman 5.11.2012
++/*
++ * Software License Agreement (BSD License)
++ *
++ *  Point Cloud Library (PCL) - www.pointclouds.org
++ *  Copyright (c) 2010-2011, Willow Garage, Inc.
++ *
++ *  All rights reserved.
++ *
++ *  Redistribution and use in source and binary forms, with or without
++ *  modification, are permitted provided that the following conditions
++ *  are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of Willow Garage, Inc. nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
++ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *  POSSIBILITY OF SUCH DAMAGE.
++ *
++ * $Id: sac_model_circle.h 3751 2011-12-31 23:18:12Z rusu $
++ *
++ */
++
++#ifndef PCL_SAMPLE_CONSENSUS_MODEL_CIRCLE3D_H_
++#define PCL_SAMPLE_CONSENSUS_MODEL_CIRCLE3D_H_
++
++#include <pcl/sample_consensus/sac_model.h>
++#include <pcl/sample_consensus/model_types.h>
++#include <boost/thread/mutex.hpp>
++
++namespace pcl
++{
++  /** \brief SampleConsensusModelCircle3D defines a model for 2D circle segmentation on the X-Y plane.
++    *
++    * The model coefficients are defined as:
++    *   - \b center.x : the X coordinate of the circle's center
++    *   - \b center.y : the Y coordinate of the circle's center
++    *   - \b center.z : the Z coordinate of the circle's center 
++    *   - \b radius   : the circle's radius
++    *   - \b normal.x : the X coordinate of the normal's direction 
++    *   - \b normal.y : the Y coordinate of the normal's direction 
++    *   - \b normal.z : the Z coordinate of the normal's direction 
++    *
++    * \author Radu B. Rusu
++    * \ingroup sample_consensus
++   */
++  template <typename PointT>
++  class SampleConsensusModelCircle3D : public SampleConsensusModel<PointT>
++  {
++    using SampleConsensusModel<PointT>::input_;
++    using SampleConsensusModel<PointT>::indices_;
++    using SampleConsensusModel<PointT>::radius_min_;
++    using SampleConsensusModel<PointT>::radius_max_;
++
++    public:
++      typedef typename SampleConsensusModel<PointT>::PointCloud PointCloud;
++      typedef typename SampleConsensusModel<PointT>::PointCloudPtr PointCloudPtr;
++      typedef typename SampleConsensusModel<PointT>::PointCloudConstPtr PointCloudConstPtr;
++
++      typedef boost::shared_ptr<SampleConsensusModelCircle3D> Ptr;
++
++      /** \brief Constructor for base SampleConsensusModelCircle3D.
++        * \param[in] cloud the input point cloud dataset
++        */
++      SampleConsensusModelCircle3D (const PointCloudConstPtr &cloud) : SampleConsensusModel<PointT> (cloud) {};
++
++      /** \brief Constructor for base SampleConsensusModelCircle3D.
++        * \param[in] cloud the input point cloud dataset
++        * \param[in] indices a vector of point indices to be used from \a cloud
++        */
++      SampleConsensusModelCircle3D (const PointCloudConstPtr &cloud, const std::vector<int> &indices) : SampleConsensusModel<PointT> (cloud, indices) {};
++
++
++      /** \brief Check whether the given index samples can form a valid 2D circle model, compute the model coefficients
++        * from these samples and store them in model_coefficients. The circle coefficients are: x, y, R.
++        * \param[in] samples the point indices found as possible good candidates for creating a valid model
++        * \param[out] model_coefficients the resultant model coefficients
++        */
++      bool
++      computeModelCoefficients (const std::vector<int> &samples,
++                                Eigen::VectorXf &model_coefficients);
++
++      /** \brief Compute all distances from the cloud data to a given 3D circle model.
++        * \param[in] model_coefficients the coefficients of a 2D circle model that we need to compute distances to
++        * \param[out] distances the resultant estimated distances
++        */
++      void
++      getDistancesToModel (const Eigen::VectorXf &model_coefficients,
++                           std::vector<double> &distances);
++
++      /** \brief Compute all distances from the cloud data to a given 3D circle model.
++        * \param[in] model_coefficients the coefficients of a 3D circle model that we need to compute distances to
++        * \param[in] threshold a maximum admissible distance threshold for determining the inliers from the outliers
++        * \param[out] inliers the resultant model inliers
++        */
++      void
++      selectWithinDistance (const Eigen::VectorXf &model_coefficients,
++                            const double threshold,
++                            std::vector<int> &inliers);
++
++      /** \brief Count all the points which respect the given model coefficients as inliers.
++        *
++        * \param[in] model_coefficients the coefficients of a model that we need to compute distances to
++        * \param[in] threshold maximum admissible distance threshold for determining the inliers from the outliers
++        * \return the resultant number of inliers
++        */
++      virtual int
++      countWithinDistance (const Eigen::VectorXf &model_coefficients,
++                           const double threshold);
++
++       /** \brief Recompute the 3d circle coefficients using the given inlier set and return them to the user.
++        * @note: these are the coefficients of the 3d circle model after refinement (eg. after SVD)
++        * \param[in] inliers the data inliers found as supporting the model
++        * \param[in] model_coefficients the initial guess for the optimization
++        * \param[out] optimized_coefficients the resultant recomputed coefficients after non-linear optimization
++        */
++      void
++      optimizeModelCoefficients (const std::vector<int> &inliers,
++                                 const Eigen::VectorXf &model_coefficients,
++                                 Eigen::VectorXf &optimized_coefficients);
++
++      /** \brief Create a new point cloud with inliers projected onto the 3d circle model.
++        * \param[in] inliers the data inliers that we want to project on the 3d circle model
++        * \param[in] model_coefficients the coefficients of a 3d circle model
++        * \param[out] projected_points the resultant projected points
++        * \param[in] copy_data_fields set to true if we need to copy the other data fields
++        */
++      void
++      projectPoints (const std::vector<int> &inliers,
++                     const Eigen::VectorXf &model_coefficients,
++                     PointCloud &projected_points,
++                     bool copy_data_fields = true);
++
++      /** \brief Verify whether a subset of indices verifies the given 3d circle model coefficients.
++        * \param[in] indices the data indices that need to be tested against the 3d circle model
++        * \param[in] model_coefficients the 3d circle model coefficients
++        * \param[in] threshold a maximum admissible distance threshold for determining the inliers from the outliers
++        */
++      bool
++      doSamplesVerifyModel (const std::set<int> &indices,
++                            const Eigen::VectorXf &model_coefficients,
++                            const double threshold);
++
++      /** \brief Return an unique id for this model (SACMODEL_CIRCLE3D). */
++      inline pcl::SacModel
++      getModelType () const { return (SACMODEL_CIRCLE3D); }
++
++    protected:
++      /** \brief Check whether a model is valid given the user constraints.
++        * \param[in] model_coefficients the set of model coefficients
++        */
++      bool
++      isModelValid (const Eigen::VectorXf &model_coefficients);
++
++      /** \brief Check if a sample of indices results in a good sample of points indices.
++        * \param[in] samples the resultant index samples
++        */
++      bool
++      isSampleGood(const std::vector<int> &samples) const;
++
++    private:
++      /** \brief Temporary boost mutex for \a tmp_inliers_ */
++      boost::mutex tmp_mutex_;
++
++      /** \brief Temporary pointer to a list of given indices for optimizeModelCoefficients () */
++      const std::vector<int> *tmp_inliers_;
++
++      /** \brief Functor for the optimization function */
++      struct OptimizationFunctor : pcl::Functor<double>
++      {
++        /** Functor constructor
++         * \param[in] n the number of variables
++         * \param[in] m the number of functions
++         * \param[in] estimator pointer to the estimator object
++         * \param[in] distance distance computation function pointer
++         */
++        OptimizationFunctor(int m, pcl::SampleConsensusModelCircle3D<PointT> *model) :
++          pcl::Functor<double>(m), model_(model) {}
++        /** Cost function to be minimized
++         * \param[in] x the variables array
++         * \param[out] fvec the resultant functions evaluations
++         * \return 0
++         */
++        int operator() (const Eigen::VectorXd &x, Eigen::VectorXd &fvec) const
++        {
++          for (int i = 0; i < values (); ++i)
++          {
++
++                //// what i have:
++                // P : Sample Point
++                Eigen::Vector3d P (model_->input_->points[(*model_->tmp_inliers_)[i]].x, model_->input_->points[(*model_->tmp_inliers_)[i]].y, model_->input_->points[(*model_->tmp_inliers_)[i]].z);
++                // C : Circle Center
++                Eigen::Vector3d C (x[0], x[1], x[2]);
++                // N : Circle (Plane) Normal
++                Eigen::Vector3d N (x[4], x[5], x[6]);
++                // r : Radius
++                float r = x[3];
++
++                Eigen::Vector3d helperVectorPC = P - C;
++                // 1.1. get line parameter
++                //float lambda = (helperVectorPC.dot(N)) / N.squaredNorm() ;
++                float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++                // Projected Point on plane
++                Eigen::Vector3d P_proj = P + lambda * N;
++
++                Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++                // K : Point on Circle
++                Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++                Eigen::Vector3d distanceVector =  P - K;
++
++                float distance = distanceVector.norm();
++                fvec[i] = distance;
++          }
++          return (0);
++        }
++
++        pcl::SampleConsensusModelCircle3D<PointT> *model_;
++      };
++  };
++}
++
++#endif  //#ifndef PCL_SAMPLE_CONSENSUS_MODEL_CIRCLE3D_H_
+Index: sample_consensus/include/pcl/sample_consensus/impl/sac_model_circle3d.hpp
+===================================================================
+--- sample_consensus/include/pcl/sample_consensus/impl/sac_model_circle3d.hpp	(revision 0)
++++ sample_consensus/include/pcl/sample_consensus/impl/sac_model_circle3d.hpp	(revision 0)
+@@ -0,0 +1,498 @@
++// Raoul Hoffmann, Karol Hausman 5.11.2012
++/*
++ * Software License Agreement (BSD License)
++ *
++ *  Copyright (c) 2009, Willow Garage, Inc.
++ *  All rights reserved.
++ *
++ *  Redistribution and use in source and binary forms, with or without
++ *  modification, are permitted provided that the following conditions
++ *  are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of Willow Garage, Inc. nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
++ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *  POSSIBILITY OF SUCH DAMAGE.
++ *
++ * $Id: sac_model_circle.hpp 3027 2011-11-01 04:04:27Z rusu $    #RH# changed things 27.01.2011 ++
++ *
++ */
++
++#ifndef PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CIRCLE_3D_H_
++#define PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CIRCLE_3D_H_
++
++#include "pcl/sample_consensus/sac_model_circle3d.h"
++#include "pcl/common/concatenate.h"
++#include <unsupported/Eigen/NonLinearOptimization>
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> bool
++pcl::SampleConsensusModelCircle3D<PointT>::isSampleGood(const std::vector<int> &samples) const
++{
++  // Get the values at the three points
++  Eigen::Vector3d p0 (input_->points[samples[0]].x, input_->points[samples[0]].y, input_->points[samples[0]].z);
++  Eigen::Vector3d p1 (input_->points[samples[1]].x, input_->points[samples[1]].y, input_->points[samples[1]].z);
++  Eigen::Vector3d p2 (input_->points[samples[2]].x, input_->points[samples[2]].y, input_->points[samples[2]].z);
++
++  // calculate vectors between points
++  p1 -= p0;
++  p2 -= p0;
++
++  if(p1.dot(p2)<0.000001) 
++  {return (true);}
++  else
++  {return (false);}
++
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> bool
++pcl::SampleConsensusModelCircle3D<PointT>::computeModelCoefficients (const std::vector<int> &samples, Eigen::VectorXf &model_coefficients)
++{
++  // Need 3 samples
++  if (samples.size () != 3)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::computeModelCoefficients] Invalid set of samples given (%lu)!\n", (unsigned long)samples.size ());
++    return (false);
++  }
++
++  model_coefficients.resize (7);   //needing 7 coefficients: centerX, centerY, centerZ, radius, normalX, normalY, normalZ
++
++  Eigen::Vector3d p0 (input_->points[samples[0]].x, input_->points[samples[0]].y, input_->points[samples[0]].z);
++  Eigen::Vector3d p1 (input_->points[samples[1]].x, input_->points[samples[1]].y, input_->points[samples[1]].z);
++  Eigen::Vector3d p2 (input_->points[samples[2]].x, input_->points[samples[2]].y, input_->points[samples[2]].z);
++
++
++  Eigen::Vector3d helperVec01 = p0 - p1;
++  Eigen::Vector3d helperVec02 = p0 - p2;
++  Eigen::Vector3d helperVec10 = p1 - p0;
++  Eigen::Vector3d helperVec12 = p1 - p2;
++  Eigen::Vector3d helperVec20 = p2 - p0;
++  Eigen::Vector3d helperVec21 = p2 - p1;
++
++  Eigen::Vector3d commonHelperVec = helperVec01.cross(helperVec12);
++
++
++  float commonDividend = 2.0 * commonHelperVec.squaredNorm();
++
++  float alpha = (helperVec12.squaredNorm() * helperVec01.dot(helperVec02)) / commonDividend;
++  float beta =  (helperVec02.squaredNorm() * helperVec10.dot(helperVec12)) / commonDividend;
++  float gamma = (helperVec01.squaredNorm() * helperVec20.dot(helperVec21)) / commonDividend;
++
++ 
++  Eigen::Vector3d circleCenter = alpha * p0 + beta * p1 + gamma * p2;
++
++  Eigen::Vector3d circleRadiusVector = circleCenter - p0;
++  float circleRadius = circleRadiusVector.norm();
++
++
++  Eigen::Vector3d circleNormal = commonHelperVec.normalized(); 
++
++
++   model_coefficients[0] = circleCenter[0];
++   model_coefficients[1] = circleCenter[1];
++   model_coefficients[2] = circleCenter[2];
++   model_coefficients[3] = circleRadius;
++   model_coefficients[4] = circleNormal[0];
++   model_coefficients[5] = circleNormal[1];
++   model_coefficients[6] = circleNormal[2];
++   
++ return (true);
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> void
++pcl::SampleConsensusModelCircle3D<PointT>::getDistancesToModel (const Eigen::VectorXf &model_coefficients, std::vector<double> &distances)
++{
++  // Check if the model is valid given the user constraints
++  if (!isModelValid (model_coefficients))
++  {
++    distances.clear ();
++    return;
++  }
++  distances.resize (indices_->size ());
++
++  // Iterate through the 3d points and calculate the distances from them to the sphere
++  for (size_t i = 0; i < indices_->size (); ++i)
++    // Calculate the distance from the point to the circle:
++    // 1.   calculate intersection point of the plane in which the circle lies and the
++    //      line from the sample point with the direction of the plane normal (projected point)
++    // 2.   calculate the intersection point of the line from the circle center to the projected point
++    //      with the circle
++    // 3.   calculate distance from corresponding point on the circle to the sample point
++    {
++        //// what i have:
++        // P : Sample Point
++        Eigen::Vector3d P (input_->points[(*indices_)[i]].x, input_->points[(*indices_)[i]].y, input_->points[(*indices_)[i]].z);
++        // C : Circle Center
++        Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++        // N : Circle (Plane) Normal
++        Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++        // r : Radius
++        float r = model_coefficients[3];
++
++        Eigen::Vector3d helperVectorPC = P - C;
++        // 1.1. get line parameter
++        float lambda = (helperVectorPC.dot(N)) / N.squaredNorm() ;
++
++        // Projected Point on plane
++        Eigen::Vector3d P_proj = P + lambda * N;
++
++        Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++        // K : Point on Circle
++        Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++        Eigen::Vector3d distanceVector =  P - K;
++
++        distances[i] = distanceVector.norm();
++    }
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> void
++pcl::SampleConsensusModelCircle3D<PointT>::selectWithinDistance (
++    const Eigen::VectorXf &model_coefficients, const double threshold,
++    std::vector<int> &inliers)
++{
++  // Check if the model is valid given the user constraints
++  if (!isModelValid (model_coefficients))
++  {
++    inliers.clear ();
++    return;
++  }
++  int nr_p = 0;
++  inliers.resize (indices_->size ());
++
++  // Iterate through the 3d points and calculate the distances from them to the sphere
++  for (size_t i = 0; i < indices_->size (); ++i)
++  {
++
++//// what i have:
++        // P : Sample Point
++        Eigen::Vector3d P (input_->points[(*indices_)[i]].x, input_->points[(*indices_)[i]].y, input_->points[(*indices_)[i]].z);
++        // C : Circle Center
++        Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++        // N : Circle (Plane) Normal
++        Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++        // r : Radius
++        float r = model_coefficients[3];
++
++        Eigen::Vector3d helperVectorPC = P - C;
++        // 1.1. get line parameter
++        float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++        // Projected Point on plane
++        Eigen::Vector3d P_proj = P + lambda * N;
++
++        Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++        // K : Point on Circle
++        Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++        Eigen::Vector3d distanceVector =  P - K;
++
++        //PCL_INFO("K: %f %f %f\n", K[0], K[1], K[2]);
++
++        float distance = distanceVector.norm();
++
++    if (distance < threshold)
++    {
++      // Returns the indices of the points whose distances are smaller than the threshold
++      inliers[nr_p] = (*indices_)[i];
++      nr_p++;
++    }
++  }
++  inliers.resize (nr_p);
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> int
++pcl::SampleConsensusModelCircle3D<PointT>::countWithinDistance (
++    const Eigen::VectorXf &model_coefficients, const double threshold)
++{
++  // Check if the model is valid given the user constraints
++  if (!isModelValid (model_coefficients))
++    return (0);
++  int nr_p = 0;
++
++  // Iterate through the 3d points and calculate the distances from them to the sphere
++  for (size_t i = 0; i < indices_->size (); ++i)
++  {
++
++        //// what i have:
++        // P : Sample Point
++        Eigen::Vector3d P (input_->points[(*indices_)[i]].x, input_->points[(*indices_)[i]].y, input_->points[(*indices_)[i]].z);
++        // C : Circle Center
++        Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++        // N : Circle (Plane) Normal
++        Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++        // r : Radius
++        float r = model_coefficients[3];
++
++        Eigen::Vector3d helperVectorPC = P - C;
++        // 1.1. get line parameter
++        float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++
++        // Projected Point on plane
++        Eigen::Vector3d P_proj = P + lambda * N;
++
++        Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++        // K : Point on Circle
++        Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++        Eigen::Vector3d distanceVector =  P - K;
++
++        float distance = distanceVector.norm();
++
++    if (distance < threshold)
++      nr_p++;
++  }
++  return (nr_p);
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> void
++pcl::SampleConsensusModelCircle3D<PointT>::optimizeModelCoefficients (
++      const std::vector<int> &inliers, const Eigen::VectorXf &model_coefficients, Eigen::VectorXf &optimized_coefficients)
++{
++  boost::mutex::scoped_lock lock (tmp_mutex_);
++
++  const int n_unknowns = 7;     
++  // Needs a set of valid model coefficients
++  if (model_coefficients.size () != n_unknowns)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::optimizeModelCoefficients] Invalid number of model coefficients given (%lu)!\n", (unsigned long)model_coefficients.size ());
++    optimized_coefficients = model_coefficients;
++    return;
++  }
++
++  // Need at least 3 samples
++  if (inliers.size () <= 3)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::optimizeModelCoefficients] Not enough inliers found to support a model (%lu)! Returning the same coefficients.\n", (unsigned long)inliers.size ());
++    optimized_coefficients = model_coefficients;
++    return;
++  }
++
++  tmp_inliers_ = &inliers;
++
++  int m = inliers.size ();
++  Eigen::VectorXd x(n_unknowns);
++  for(int d = 0; d < n_unknowns; d++)
++    x[d] = model_coefficients[d];
++
++  OptimizationFunctor functor(m, this);
++  Eigen::NumericalDiff<OptimizationFunctor> num_diff(functor);
++  Eigen::LevenbergMarquardt<Eigen::NumericalDiff<OptimizationFunctor> > lm(num_diff);
++  int info = lm.minimize (x);
++
++  // Compute the L2 norm of the residuals
++  PCL_DEBUG ("[pcl::SampleConsensusModelCircle3D::optimizeModelCoefficients] LM solver finished with exit code %i, having a residual norm of %g. \nInitial solution: %g %g %g %g %g %g %g \nFinal solution: %g %g %g %g %g %g %g\n",
++             info, lm.fvec.norm (), model_coefficients[0], model_coefficients[1], model_coefficients[2], model_coefficients[3], model_coefficients[4], model_coefficients[5], model_coefficients[6], x[0], x[1], x[2], x[3], x[4], x[5], x[6]);
++
++  optimized_coefficients.resize(n_unknowns);
++  for(int d = 0; d < n_unknowns; d++)
++    optimized_coefficients[d] = x[d];
++
++
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> void
++pcl::SampleConsensusModelCircle3D<PointT>::projectPoints (
++      const std::vector<int> &inliers, const Eigen::VectorXf &model_coefficients,
++      PointCloud &projected_points, bool copy_data_fields)
++{
++  // Needs a valid set of model coefficients
++  if (model_coefficients.size () != 7)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::projectPoints] Invalid number of model coefficients given (%lu)!\n", (unsigned long)model_coefficients.size ());
++    return;
++  }
++
++  projected_points.header   = input_->header;
++  projected_points.is_dense = input_->is_dense;
++
++  // Copy all the data fields from the input cloud to the projected one?
++  if (copy_data_fields)
++  {
++    // Allocate enough space and copy the basics
++    projected_points.points.resize (input_->points.size ());
++    projected_points.width    = input_->width;
++    projected_points.height   = input_->height;
++
++    typedef typename pcl::traits::fieldList<PointT>::type FieldList;
++    // Iterate over each point
++    for (size_t i = 0; i < projected_points.points.size (); ++i)
++      // Iterate over each dimension
++      pcl::for_each_type <FieldList> (NdConcatenateFunctor <PointT, PointT> (input_->points[i], projected_points.points[i]));
++
++    // Iterate through the 3d points and calculate the distances from them to the plane
++    // Iterate through the 3d points and calculate the distances from them to the plane
++    for (size_t i = 0; i < inliers.size (); ++i)
++    {
++
++    //// what i have:
++    // P : Sample Point
++    Eigen::Vector3d P (input_->points[inliers[i]].x, input_->points[inliers[i]].y, input_->points[inliers[i]].z);
++    // C : Circle Center
++    Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++    // N : Circle (Plane) Normal
++    Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++    // r : Radius
++    float r = model_coefficients[3];
++
++    Eigen::Vector3d helperVectorPC = P - C;
++    // 1.1. get line parameter
++    //float lambda = (helperVectorPC.dot(N)) / N.squaredNorm() ;
++    float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++    // Projected Point on plane
++    Eigen::Vector3d P_proj = P + lambda * N;
++
++    Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++    // K : Point on Circle
++    Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++     projected_points.points[i].x = K[0];
++     projected_points.points[i].y = K[1];
++     projected_points.points[i].z = K[2];
++    }
++  }
++  else
++  {
++    // Allocate enough space and copy the basics
++    projected_points.points.resize (inliers.size ());
++    projected_points.width    = inliers.size ();
++    projected_points.height   = 1;
++
++    typedef typename pcl::traits::fieldList<PointT>::type FieldList;
++    // Iterate over each point
++    for (size_t i = 0; i < inliers.size (); ++i)
++      // Iterate over each dimension
++      pcl::for_each_type <FieldList> (NdConcatenateFunctor <PointT, PointT> (input_->points[inliers[i]], projected_points.points[i]));
++
++    // Iterate through the 3d points and calculate the distances from them to the plane
++    for (size_t i = 0; i < inliers.size (); ++i)
++    {
++
++    //// what i have:
++    // P : Sample Point
++    Eigen::Vector3d P (input_->points[inliers[i]].x, input_->points[inliers[i]].y, input_->points[inliers[i]].z);
++    // C : Circle Center
++    Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++    // N : Circle (Plane) Normal
++    Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++    // r : Radius
++    float r = model_coefficients[3];
++
++    Eigen::Vector3d helperVectorPC = P - C;
++    // 1.1. get line parameter
++    float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++    // Projected Point on plane
++    Eigen::Vector3d P_proj = P + lambda * N;
++
++    Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++    // K : Point on Circle
++    Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++     projected_points.points[i].x = K[0];
++     projected_points.points[i].y = K[1];
++     projected_points.points[i].z = K[2];
++    }
++  }
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> bool
++pcl::SampleConsensusModelCircle3D<PointT>::doSamplesVerifyModel (
++      const std::set<int> &indices, const Eigen::VectorXf &model_coefficients, const double threshold)
++{
++  // Needs a valid model coefficients
++  if (model_coefficients.size () != 7)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::doSamplesVerifyModel] Invalid number of model coefficients given (%lu)!\n", (unsigned long)model_coefficients.size ());
++    return (false);
++  }
++
++  for (std::set<int>::const_iterator it = indices.begin (); it != indices.end (); ++it)
++    {// Calculate the distance from the point to the sphere as the difference between
++    //dist(point,sphere_origin) and sphere_radius
++
++
++
++        //// what i have:
++        // P : Sample Point
++        Eigen::Vector3d P (input_->points[*it].x, input_->points[*it].y, input_->points[*it].z);
++        // C : Circle Center
++        Eigen::Vector3d C (model_coefficients[0], model_coefficients[1], model_coefficients[2]);
++        // N : Circle (Plane) Normal
++        Eigen::Vector3d N (model_coefficients[4], model_coefficients[5], model_coefficients[6]);
++        // r : Radius
++        float r = model_coefficients[3];
++
++        Eigen::Vector3d helperVectorPC = P - C;
++        // 1.1. get line parameter
++        float lambda = (-(helperVectorPC.dot(N))) / N.dot(N);
++        // Projected Point on plane
++        Eigen::Vector3d P_proj = P + lambda * N;
++
++        Eigen::Vector3d helperVectorP_projC = P_proj - C;
++
++        // K : Point on Circle
++        Eigen::Vector3d K = C + r * helperVectorP_projC.normalized();
++
++        Eigen::Vector3d distanceVector =  P - K;
++
++        float distance = distanceVector.norm();
++
++
++    if (distance > threshold)
++    {return (false);}
++    }
++  return (true);
++}
++
++//////////////////////////////////////////////////////////////////////////
++template <typename PointT> bool
++pcl::SampleConsensusModelCircle3D<PointT>::isModelValid (const Eigen::VectorXf &model_coefficients)
++{
++  // Needs a valid model coefficients
++  if (model_coefficients.size () != 7)
++  {
++    PCL_ERROR ("[pcl::SampleConsensusModelCircle3D::isModelValid] Invalid number of model coefficients given (%lu)!\n", (unsigned long)model_coefficients.size ());
++    return (false);
++  }
++
++  if (radius_min_ != -DBL_MAX && model_coefficients[3] < radius_min_)
++    return (false);
++  if (radius_max_ != DBL_MAX && model_coefficients[3] > radius_max_)
++    return (false);
++
++  return (true);
++}
++
++#define PCL_INSTANTIATE_SampleConsensusModelCircle3D(T) template class PCL_EXPORTS pcl::SampleConsensusModelCircle3D<T>;
++
++#endif    // PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CIRCLE3D_H_
++
+Index: sample_consensus/include/pcl/sample_consensus/model_types.h
+===================================================================
+--- sample_consensus/include/pcl/sample_consensus/model_types.h	(revision 7803)
++++ sample_consensus/include/pcl/sample_consensus/model_types.h	(working copy)
+@@ -72,7 +72,7 @@
+ const static SampleSizeModel sample_size_pairs[] = {SampleSizeModel (pcl::SACMODEL_PLANE, 3),
+                                                     SampleSizeModel (pcl::SACMODEL_LINE, 2),
+                                                     SampleSizeModel (pcl::SACMODEL_CIRCLE2D, 3),
+-                                                    //SampleSizeModel (pcl::SACMODEL_CIRCLE3D, 3),
++                                                    SampleSizeModel (pcl::SACMODEL_CIRCLE3D, 3),
+                                                     SampleSizeModel (pcl::SACMODEL_SPHERE, 4),
+                                                     SampleSizeModel (pcl::SACMODEL_CYLINDER, 2),
+                                                     SampleSizeModel (pcl::SACMODEL_CONE, 3),
+Index: sample_consensus/src/sac_model_circle3d.cpp
+===================================================================
+--- sample_consensus/src/sac_model_circle3d.cpp	(revision 0)
++++ sample_consensus/src/sac_model_circle3d.cpp	(revision 0)
+@@ -0,0 +1,45 @@
++/*
++ * Software License Agreement (BSD License)
++ *
++ *  Copyright (c) 2009, Willow Garage, Inc.
++ *  All rights reserved.
++ *
++ *  Redistribution and use in source and binary forms, with or without
++ *  modification, are permitted provided that the following conditions
++ *  are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of Willow Garage, Inc. nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
++ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *  POSSIBILITY OF SUCH DAMAGE.
++ *
++ * $Id: sac_model_line.cpp 4702 2012-02-23 09:39:33Z gedikli $
++ *
++ */
++
++#include "pcl/impl/instantiate.hpp"
++#include "pcl/point_types.h"
++#include "pcl/sample_consensus/sac_model_circle3d.h"
++#include "pcl/sample_consensus/impl/sac_model_circle3d.hpp"
++
++// Instantiations of specific point types
++PCL_INSTANTIATE(SampleConsensusModelCircle3D, PCL_XYZ_POINT_TYPES)
++
+Index: sample_consensus/CMakeLists.txt
+===================================================================
+--- sample_consensus/CMakeLists.txt	(revision 7803)
++++ sample_consensus/CMakeLists.txt	(working copy)
+@@ -17,6 +17,7 @@
+         src/rmsac.cpp
+         src/rransac.cpp
+         src/sac_model_circle.cpp
++        src/sac_model_circle3d.cpp
+         src/sac_model_cylinder.cpp
+         src/sac_model_cone.cpp
+         src/sac_model_line.cpp
+@@ -47,6 +48,7 @@
+         include/pcl/${SUBSYS_NAME}/sac.h
+         include/pcl/${SUBSYS_NAME}/sac_model.h
+         include/pcl/${SUBSYS_NAME}/sac_model_circle.h
++	include/pcl/${SUBSYS_NAME}/sac_model_circle3d.h
+         include/pcl/${SUBSYS_NAME}/sac_model_cylinder.h
+         include/pcl/${SUBSYS_NAME}/sac_model_cone.h
+         include/pcl/${SUBSYS_NAME}/sac_model_line.h
+@@ -71,6 +73,7 @@
+         include/pcl/${SUBSYS_NAME}/impl/rmsac.hpp
+         include/pcl/${SUBSYS_NAME}/impl/rransac.hpp
+         include/pcl/${SUBSYS_NAME}/impl/sac_model_circle.hpp
++	include/pcl/${SUBSYS_NAME}/impl/sac_model_circle3d.hpp
+         include/pcl/${SUBSYS_NAME}/impl/sac_model_cylinder.hpp
+         include/pcl/${SUBSYS_NAME}/impl/sac_model_cone.hpp
+         include/pcl/${SUBSYS_NAME}/impl/sac_model_line.hpp
+Index: segmentation/include/pcl/segmentation/impl/sac_segmentation.hpp
+===================================================================
+--- segmentation/include/pcl/segmentation/impl/sac_segmentation.hpp	(revision 7803)
++++ segmentation/include/pcl/segmentation/impl/sac_segmentation.hpp	(working copy)
+@@ -38,33 +38,32 @@
+ #ifndef PCL_SEGMENTATION_IMPL_SAC_SEGMENTATION_H_
+ #define PCL_SEGMENTATION_IMPL_SAC_SEGMENTATION_H_
+ 
+-#include <pcl/segmentation/sac_segmentation.h>
++#include "pcl/segmentation/sac_segmentation.h"
+ 
+ // Sample Consensus methods
+-#include <pcl/sample_consensus/sac.h>
+-#include <pcl/sample_consensus/lmeds.h>
+-#include <pcl/sample_consensus/mlesac.h>
+-#include <pcl/sample_consensus/msac.h>
+-#include <pcl/sample_consensus/ransac.h>
+-#include <pcl/sample_consensus/rmsac.h>
+-#include <pcl/sample_consensus/rransac.h>
+-#include <pcl/sample_consensus/prosac.h>
++#include "pcl/sample_consensus/sac.h"
++#include "pcl/sample_consensus/lmeds.h"
++#include "pcl/sample_consensus/mlesac.h"
++#include "pcl/sample_consensus/msac.h"
++#include "pcl/sample_consensus/ransac.h"
++#include "pcl/sample_consensus/rmsac.h"
++#include "pcl/sample_consensus/rransac.h"
++#include "pcl/sample_consensus/prosac.h"
+ 
+ // Sample Consensus models
+-#include <pcl/sample_consensus/sac_model.h>
+-#include <pcl/sample_consensus/sac_model_circle.h>
+-#include <pcl/sample_consensus/sac_model_cylinder.h>
+-#include <pcl/sample_consensus/sac_model_cone.h>
+-#include <pcl/sample_consensus/sac_model_line.h>
+-#include <pcl/sample_consensus/sac_model_normal_plane.h>
+-#include <pcl/sample_consensus/sac_model_normal_sphere.h>
+-#include <pcl/sample_consensus/sac_model_parallel_plane.h>
+-#include <pcl/sample_consensus/sac_model_normal_parallel_plane.h>
+-#include <pcl/sample_consensus/sac_model_parallel_line.h>
+-#include <pcl/sample_consensus/sac_model_perpendicular_plane.h>
+-#include <pcl/sample_consensus/sac_model_plane.h>
+-#include <pcl/sample_consensus/sac_model_sphere.h>
+-#include <pcl/sample_consensus/sac_model_stick.h>
++#include "pcl/sample_consensus/sac_model.h"
++#include "pcl/sample_consensus/sac_model_circle.h"
++#include "pcl/sample_consensus/sac_model_circle3d.h"
++#include "pcl/sample_consensus/sac_model_cylinder.h"
++#include "pcl/sample_consensus/sac_model_line.h"
++#include "pcl/sample_consensus/sac_model_normal_plane.h"
++#include "pcl/sample_consensus/sac_model_parallel_plane.h"
++#include "pcl/sample_consensus/sac_model_normal_parallel_plane.h"
++#include "pcl/sample_consensus/sac_model_parallel_line.h"
++#include "pcl/sample_consensus/sac_model_perpendicular_plane.h"
++#include "pcl/sample_consensus/sac_model_plane.h"
++#include "pcl/sample_consensus/sac_model_sphere.h"
++#include "pcl/sample_consensus/sac_model_stick.h"
+ 
+ //////////////////////////////////////////////////////////////////////////////////////////////
+ template <typename PointT> void
+@@ -173,6 +172,20 @@
+       }
+       break;
+     }
++    case SACMODEL_CIRCLE3D:
++    {
++      PCL_DEBUG ("[pcl::%s::initSACModel] Using a model of type: SACMODEL_CIRCLE3D\n", getClassName ().c_str ());
++      model_.reset (new SampleConsensusModelCircle3D<PointT> (input_, *indices_));
++      typename SampleConsensusModelCircle3D<PointT>::Ptr model_circle3d = boost::static_pointer_cast<SampleConsensusModelCircle3D<PointT> > (model_);
++      double min_radius, max_radius;
++      model_circle3d->getRadiusLimits (min_radius, max_radius);
++      if (radius_min_ != min_radius && radius_max_ != max_radius)
++      {
++        PCL_DEBUG ("[pcl::%s::initSACModel] Setting radius limits to %f/%f\n", getClassName ().c_str (), radius_min_, radius_max_);
++        model_circle3d->setRadiusLimits (radius_min_, radius_max_);
++      }
++      break;
++    }
+     case SACMODEL_SPHERE:
+     {
+       PCL_DEBUG ("[pcl::%s::initSACModel] Using a model of type: SACMODEL_SPHERE\n", getClassName ().c_str ());
+@@ -244,14 +257,6 @@
+       return (false);
+     }
+   }
+-  
+-  if (samples_radius_ > 0. )
+-  {
+-    PCL_DEBUG ("[pcl::%s::initSAC] Setting the maximum distance to %f\n", getClassName ().c_str (), samples_radius_);
+-    // Set maximum distance for radius search during random sampling
+-    model_->setSamplesMaxDist(samples_radius_, samples_radius_search_);
+-  }
+-
+   return (true);
+ }
+ 
+@@ -418,75 +423,12 @@
+       }
+       break;
+     }
+-    case SACMODEL_CONE:
+-    {
+-      PCL_DEBUG ("[pcl::%s::initSACModel] Using a model of type: SACMODEL_CONE\n", getClassName ().c_str ());
+-      model_.reset (new SampleConsensusModelCone<PointT, PointNT > (input_, *indices_));
+-      typename SampleConsensusModelCone<PointT, PointNT>::Ptr model_cone = boost::static_pointer_cast<SampleConsensusModelCone<PointT, PointNT> > (model_);
+-
+-      // Set the input normals
+-      model_cone->setInputNormals (normals_);
+-      double min_angle, max_angle;
+-      model_cone->getMinMaxOpeningAngle(min_angle, max_angle);
+-      if (min_angle_ != min_angle && max_angle_ != max_angle)
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting minimum and maximum opening angle to %f and %f \n", getClassName ().c_str (), min_angle_, max_angle_);
+-        model_cone->setMinMaxOpeningAngle (min_angle_, max_angle_);
+-      }
+-
+-      if (distance_weight_ != model_cone->getNormalDistanceWeight ())
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting normal distance weight to %f\n", getClassName ().c_str (), distance_weight_);
+-        model_cone->setNormalDistanceWeight (distance_weight_);
+-      }
+-      if (axis_ != Eigen::Vector3f::Zero () && model_cone->getAxis () != axis_)
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting the axis to %f, %f, %f\n", getClassName ().c_str (), axis_[0], axis_[1], axis_[2]);
+-        model_cone->setAxis (axis_);
+-      }
+-      if (eps_angle_ != 0.0 && model_cone->getEpsAngle () != eps_angle_)
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting the epsilon angle to %f (%f degrees)\n", getClassName ().c_str (), eps_angle_, eps_angle_ * 180.0 / M_PI);
+-        model_cone->setEpsAngle (eps_angle_);
+-      }
+-      break;
+-    }
+-    case SACMODEL_NORMAL_SPHERE:
+-    {
+-      PCL_DEBUG ("[pcl::%s::initSACModel] Using a model of type: SACMODEL_NORMAL_SPHERE\n", getClassName ().c_str ());
+-      model_.reset (new SampleConsensusModelNormalSphere<PointT, PointNT> (input_, *indices_));
+-      typename SampleConsensusModelNormalSphere<PointT, PointNT>::Ptr model_normals_sphere = boost::static_pointer_cast<SampleConsensusModelNormalSphere<PointT, PointNT> > (model_);
+-      // Set the input normals
+-      model_normals_sphere->setInputNormals (normals_);
+-      double min_radius, max_radius;
+-      model_normals_sphere->getRadiusLimits (min_radius, max_radius);
+-      if (radius_min_ != min_radius && radius_max_ != max_radius)
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting radius limits to %f/%f\n", getClassName ().c_str (), radius_min_, radius_max_);
+-        model_normals_sphere->setRadiusLimits (radius_min_, radius_max_);
+-      }
+-
+-      if (distance_weight_ != model_normals_sphere->getNormalDistanceWeight ())
+-      {
+-        PCL_DEBUG ("[pcl::%s::initSACModel] Setting normal distance weight to %f\n", getClassName ().c_str (), distance_weight_);
+-        model_normals_sphere->setNormalDistanceWeight (distance_weight_);
+-      }
+-      break;
+-    }
+     // If nothing else, try SACSegmentation
+     default:
+     {
+       return (pcl::SACSegmentation<PointT>::initSACModel (model_type));
+     }
+   }
+-
+-  if (SACSegmentation<PointT>::samples_radius_ > 0. )
+-  {
+-    PCL_DEBUG ("[pcl::%s::initSAC] Setting the maximum distance to %f\n", getClassName ().c_str (), SACSegmentation<PointT>::samples_radius_);
+-    // Set maximum distance for radius search during random sampling
+-    model_->setSamplesMaxDist(SACSegmentation<PointT>::samples_radius_, SACSegmentation<PointT>::samples_radius_search_);
+-  }
+-
+   return (true);
+ }
+ 
+Index: test/test_sample_consensus.cpp
+===================================================================
+--- test/test_sample_consensus.cpp	(revision 7803)
++++ test/test_sample_consensus.cpp	(working copy)
+@@ -52,6 +52,7 @@
+ #include <pcl/sample_consensus/sac_model_cone.h>
+ #include <pcl/sample_consensus/sac_model_cylinder.h>
+ #include <pcl/sample_consensus/sac_model_circle.h>
++#include <pcl/sample_consensus/sac_model_circle3d.h>
+ #include <pcl/sample_consensus/sac_model_line.h>
+ #include <pcl/sample_consensus/sac_model_normal_plane.h>
+ #include <pcl/sample_consensus/sac_model_normal_sphere.h>
+@@ -69,6 +70,7 @@
+ typedef SampleConsensusModelCylinder<PointXYZ, Normal>::Ptr SampleConsensusModelCylinderPtr;
+ typedef SampleConsensusModelCone<PointXYZ, Normal>::Ptr SampleConsensusModelConePtr;
+ typedef SampleConsensusModelCircle2D<PointXYZ>::Ptr SampleConsensusModelCircle2DPtr;
++typedef SampleConsensusModelCircle3D<PointXYZ>::Ptr SampleConsensusModelCircle3DPtr;
+ typedef SampleConsensusModelLine<PointXYZ>::Ptr SampleConsensusModelLinePtr;
+ typedef SampleConsensusModelNormalPlane<PointXYZ, Normal>::Ptr SampleConsensusModelNormalPlanePtr;
+ typedef SampleConsensusModelNormalSphere<PointXYZ, Normal>::Ptr SampleConsensusModelNormalSpherePtr;
+@@ -729,6 +731,77 @@
+ }
+ 
+ //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++TEST (RANSAC, SampleConsensusModelCircle3D)
++{
++  srand (0);
++
++  // Use a custom point cloud for these tests until we need something better
++  PointCloud<PointXYZ> cloud;
++  cloud.points.resize (20);
++
++  cloud.points[0].x = 1.0f;  	    cloud.points[0].y = 5.0f;        cloud.points[0].z = -2.9000001f;
++  cloud.points[1].x = 1.034202f;    cloud.points[1].y = 5.0f;        cloud.points[1].z = -2.9060307f;
++  cloud.points[2].x = 1.0642787f;   cloud.points[2].y = 5.0f;        cloud.points[2].z = -2.9233956f;
++  cloud.points[3].x = 1.0866026f;   cloud.points[3].y = 5.0f;  	     cloud.points[3].z = -2.95f;
++  cloud.points[4].x = 1.0984808f;   cloud.points[4].y = 5.0f;  	     cloud.points[4].z = -2.9826353f;
++  cloud.points[5].x = 1.0984808f;   cloud.points[5].y = 5.0f;        cloud.points[5].z = -3.0173647f;
++  cloud.points[6].x = 1.0866026f;   cloud.points[6].y = 5.0f;  	     cloud.points[6].z = -3.05f;
++  cloud.points[7].x = 1.0642787f;   cloud.points[7].y = 5.0f;  	     cloud.points[7].z = -3.0766044f;
++  cloud.points[8].x = 1.034202f;    cloud.points[8].y = 5.0f;  	     cloud.points[8].z = -3.0939693f;
++  cloud.points[9].x = 1.0f;         cloud.points[9].y = 5.0f;  	     cloud.points[9].z = -3.0999999f;
++  cloud.points[10].x = 0.96579796f; cloud.points[10].y = 5.0f; 	     cloud.points[10].z = -3.0939693f;
++  cloud.points[11].x = 0.93572122f; cloud.points[11].y = 5.0f; 	     cloud.points[11].z = -3.0766044f;
++  cloud.points[12].x = 0.91339743f; cloud.points[12].y = 5.0f; 	     cloud.points[12].z = -3.05f;
++  cloud.points[13].x = 0.90151924f; cloud.points[13].y = 5.0f; 	     cloud.points[13].z = -3.0173647f;
++  cloud.points[14].x = 0.90151924f; cloud.points[14].y = 5.0f; 	     cloud.points[14].z = -2.9826353f;
++  cloud.points[15].x = 0.91339743f; cloud.points[15].y = 5.0f; 	     cloud.points[15].z = -2.95f;
++  cloud.points[16].x = 0.93572122f; cloud.points[16].y = 5.0f; 	     cloud.points[16].z = -2.9233956f;
++  cloud.points[17].x = 0.96579796f; cloud.points[17].y = 5.0;        cloud.points[17].z = -2.9060307f;
++  cloud.points[18].x = 0.85000002f; cloud.points[18].y = 4.8499999f; cloud.points[18].z = -3.1500001f;
++  cloud.points[19].x = 1.15f; 	    cloud.points[19].y = 5.1500001f; cloud.points[19].z = -2.8499999f;
++
++  // Create a shared 3d circle model pointer directly
++  SampleConsensusModelCircle3DPtr model (new SampleConsensusModelCircle3D<PointXYZ> (cloud.makeShared ()));
++
++  // Create the RANSAC object
++  RandomSampleConsensus<PointXYZ> sac (model, 0.03);
++
++  // Algorithm tests
++  bool result = sac.computeModel ();
++  ASSERT_EQ (result, true);
++
++  std::vector<int> sample;
++  sac.getModel (sample);
++  EXPECT_EQ (int (sample.size ()), 3);
++
++  std::vector<int> inliers;
++  sac.getInliers (inliers);
++  EXPECT_EQ (int (inliers.size ()), 18);
++
++  Eigen::VectorXf coeff;
++  sac.getModelCoefficients (coeff);
++  EXPECT_EQ (int (coeff.size ()), 7);
++  EXPECT_NEAR (coeff[0],  1, 1e-3);
++  EXPECT_NEAR (coeff[1],  5, 1e-3);
++  EXPECT_NEAR (coeff[2], -3, 1e-3);
++  EXPECT_NEAR (coeff[3],0.1, 1e-3);
++  EXPECT_NEAR (coeff[4],  0, 1e-3);
++  EXPECT_NEAR (coeff[5], -1, 1e-3);
++  EXPECT_NEAR (coeff[6],  0, 1e-3);
++
++  Eigen::VectorXf coeff_refined;
++  model->optimizeModelCoefficients (inliers, coeff, coeff_refined);
++  EXPECT_EQ (int (coeff_refined.size ()), 7);
++  EXPECT_NEAR (coeff_refined[0],  3, 1e-3);
++  EXPECT_NEAR (coeff_refined[1], -5, 1e-3);
++  EXPECT_NEAR (coeff_refined[2],  1, 1e-3);
++  EXPECT_NEAR (coeff_refined[3],0.1, 1e-3);
++  EXPECT_NEAR (coeff_refined[4],  0, 1e-3);
++  EXPECT_NEAR (coeff_refined[5], -1, 1e-3);
++  EXPECT_NEAR (coeff_refined[6],  0, 1e-3);
++}
++
++//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ TEST (RANSAC, SampleConsensusModelLine)
+ {
+   srand (0);

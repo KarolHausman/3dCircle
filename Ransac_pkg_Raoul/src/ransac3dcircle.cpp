@@ -1,0 +1,148 @@
+#include <iostream>
+#include <cstdlib>
+#include <math.h>
+
+#include <ros/ros.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/Marker.h>
+#include <tf/transform_listener.h>
+#include <pcl/point_types.h>
+#include <pcl/common/common.h>
+#include <pcl/common/io.h>
+
+#include <pcl_ros/transforms.h>
+
+#include <pcl/io/io.h>
+
+#include "pcl_ros/io/bag_io.h"
+
+#include "sensor_msgs/point_cloud_conversion.h"
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/ModelCoefficients.h>
+
+#include <pcl/features/normal_3d.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+
+#include <pcl/filters/extract_indices.h>
+
+#include <pcl/segmentation/extract_clusters.h>
+
+typedef pcl::PointXYZRGB PointT;
+
+
+ros::Publisher pubInput;
+ros::Publisher pubInliers;
+
+int main(int argc, char **argv)
+ {
+     srand( (unsigned)time( NULL ) );
+
+ros::init(argc, argv, "ransac3dcircle");
+ros::NodeHandle n;
+pubInput = n.advertise<sensor_msgs::PointCloud2> ("ransac3dcircle_input", 1);
+pubInliers = n.advertise<sensor_msgs::PointCloud2> ("ransac3dcircle_inliers", 1);
+ros::Rate loop_rate(10);
+
+
+double angle = 0;
+
+
+while (ros::ok())
+  {
+    angle += 0.01;
+    ROS_INFO("-------");
+    sensor_msgs::PointCloud2 outputCloud;
+
+    boost::shared_ptr<pcl::PointIndices> inliers_circle3D (new pcl::PointIndices);
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclInputCloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclOutputCloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclInliersCloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    pcl::ModelCoefficients::Ptr coefficients_circle (new pcl::ModelCoefficients);
+
+
+
+   //Create a circle Pointcloud for Testing
+    float centerX = 0.3;
+    float centerY = 0.7;
+    float centerZ = 0.5;
+    float radius =  0.1;
+    int numOfPoints = 100;
+    for (int i=0; i< numOfPoints; i++)
+    {
+        pcl::PointXYZRGB newPoint;
+        newPoint.x = centerX + radius * sin((((float)i)/((float)numOfPoints)) * 2 * M_PI) + ((((float) rand()) / RAND_MAX))*0.01;
+        //newPoint.y = centerY + radius * cos((((float)i)/((float)numOfPoints)) * 2 * M_PI);
+        newPoint.y = centerY  + ((((float) rand()) / RAND_MAX))*0.01;
+        newPoint.z = centerZ + radius * cos((((float)i)/((float)numOfPoints)) * 2 * M_PI) + ((((float) rand()) / RAND_MAX))*0.01;
+
+        pclInputCloud->points.push_back(newPoint);
+    }
+
+    float noiseSpan = 3;
+    for (int i=0; i< numOfPoints; i++)
+    {
+        pcl::PointXYZRGB newPoint;
+        newPoint.x = centerX - (noiseSpan/2.0) * radius + noiseSpan * radius * ((((float) rand()) / RAND_MAX));
+        newPoint.y = centerY - (noiseSpan/2.0) * radius + noiseSpan * radius * ((((float) rand()) / RAND_MAX));
+        newPoint.z = centerZ - (noiseSpan/2.0) * radius + noiseSpan * radius * ((((float) rand()) / RAND_MAX));
+
+        pclInputCloud->points.push_back(newPoint);
+    }
+
+    tf::Transform myTf;
+    myTf.setOrigin(tf::Vector3(0,0,0));
+    myTf.setRotation(tf::Quaternion(tf::Vector3(1,1,1),angle));
+
+    pcl_ros::transformPointCloud(*pclInputCloud, *pclInputCloud ,myTf);
+
+
+    double threshold;
+    ros::param::param<double>("RANSAC_CIRCLE3D_threshold", threshold, 0.01);
+
+
+
+    pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+
+    seg.setOptimizeCoefficients (true);
+    seg.setModelType (pcl::SACMODEL_CIRCLE3D);
+    seg.setMethodType (pcl::SAC_RANSAC);
+    seg.setMaxIterations (10000);
+    seg.setDistanceThreshold (threshold);
+    seg.setRadiusLimits (0.05, 0.15);
+    seg.setInputCloud (pclInputCloud);
+
+    // Obtain the cylinder inliers and coefficients
+    seg.segment (*inliers_circle3D, *coefficients_circle);
+    ROS_INFO("coeff circle: %f %f %f %f %f %f %f", coefficients_circle->values[0], coefficients_circle->values[1],
+                                                    coefficients_circle->values[2], coefficients_circle->values[3],
+                                                    coefficients_circle->values[4], coefficients_circle->values[5],
+                                                    coefficients_circle->values[6]);
+
+    pcl::ExtractIndices<pcl::PointXYZRGB> ei;
+    ei.setInputCloud(pclInputCloud);
+    ei.setIndices(inliers_circle3D);
+    ei.filter(*pclInliersCloud);
+
+
+    pcl::toROSMsg(*pclInputCloud, outputCloud);
+    outputCloud.header.frame_id = "/map"; //inputCloud.header.frame_id;
+    pubInput.publish(outputCloud);
+
+    pcl::toROSMsg(*pclInliersCloud, outputCloud);
+    outputCloud.header.frame_id = "/map"; //inputCloud.header.frame_id;
+    pubInliers.publish(outputCloud);
+
+
+    ros::spinOnce();
+
+    loop_rate.sleep();
+
+  }
+
+ }
