@@ -52,42 +52,16 @@ After you have made the executable, you can run it. Simply do::
 
 You will see something similar to::
 
-  PointCloud has: 307200 data points.
-  PointCloud after filtering has: 139897 data points.
-  [pcl::SACSegmentationFromNormals::initSACModel] Using a model of type: SACMODEL_NORMAL_PLANE
-  [pcl::SACSegmentationFromNormals::initSACModel] Setting normal distance weight to 0.100000
-  [pcl::SACSegmentationFromNormals::initSAC] Using a method of type: SAC_RANSAC with a model threshold of 0.030000
-  [pcl::SACSegmentationFromNormals::initSAC] Setting the maximum number of iterations to 100
-  Plane coefficients: header: 
-    seq: 0
-    stamp: 0.000000000
-    frame_id: 
-  values[]
-    values[0]: -0.0161854
-    values[1]: 0.837724
-    values[2]: 0.545855
-    values[3]: -0.528787
+  coeff circle: 1.000000 5.000000 -3.000000 0.100000 -0.000000 -1.000000 0.000000 
+  inliers number:18 
 
-  PointCloud representing the planar component: 117410 data points.
-  [pcl::SACSegmentationFromNormals::initSACModel] Using a model of type: SACMODEL_CYLINDER
-  [pcl::SACSegmentationFromNormals::initSACModel] Setting radius limits to 0.000000/0.100000
-  [pcl::SACSegmentationFromNormals::initSACModel] Setting normal distance weight to 0.100000
-  [pcl::SACSegmentationFromNormals::initSAC] Using a method of type: SAC_RANSAC with a model threshold of 0.050000
-  [pcl::SampleConsensusModelCylinder::optimizeModelCoefficients] LM solver finished with exit code 2, having a residual norm of 0.322616. 
-  Initial solution: 0.0452105 0.0924601 0.790215 0.20495 -0.721649 -0.661225 0.0422902 
-  Final solution: 0.0452105 0.0924601 0.790215 0.20495 -0.721649 -0.661225 0.0396354
-  Cylinder coefficients: header: 
-    seq: 0
-    stamp: 0.000000000
-    frame_id: 
-  values[]
-    values[0]: 0.0452105
-    values[1]: 0.0924601
-    values[2]: 0.790215
-    values[3]: 0.20495
-    values[4]: -0.721649
-    values[5]: -0.661225
-    values[6]: 0.0396354
+You can also look at your point clouds circle_input.pcd, circle_result.pcd::
 
-  PointCloud representing the cylindrical component: 8625 data points.
+	$ ./pcd_viewer circle_input.pcd circle_result.pcd
 
+You are now able to see the the found circle together with the input data in one viewer. You should see
+something similar to this:
+
+.. image:: images/3dcircle_segmentation.jpg
+   :alt: 3d circle segmentation
+   :align: center
